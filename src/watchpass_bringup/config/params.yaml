@@ -1,0 +1,30 @@
+# Default parameters for the Watchpass streaming pipeline.
+# Override any of these from the command line or your own params file.
+
+/**/camera_bridge:
+  ros__parameters:
+    input_topic: image_raw       # sensor_msgs/Image from the camera / sim
+    output_topic: watch_frame    # WatchFrame published zero-copy
+
+/**/grayscale:
+  ros__parameters:
+    input_topic: watch_frame
+    output_topic: watch_frame_gray
+
+/**/flip:
+  ros__parameters:
+    input_topic: watch_frame_gray
+    output_topic: watch_frame_flipped
+    flip_code: 1                 # 0=vertical, 1=horizontal, -1=both
+
+/**/ffmpeg_streamer:
+  ros__parameters:
+    input_topic: watch_frame     # or watch_frame_flipped in the chained demo
+    ffmpeg_path: ffmpeg
+    fps: 30.0
+    encoder: x264                # x264 (software) | vaapi (AMD/Intel GPU)
+    rtsp_url: rtsp://127.0.0.1:8554/watchpass
+    vaapi_device: /dev/dri/renderD128
+    # output_args overrides the encoder preset entirely when non-empty, e.g.:
+    # output_args: ["-c:v", "libx264", "-f", "rtp", "rtp://127.0.0.1:5004"]
+    output_args: []

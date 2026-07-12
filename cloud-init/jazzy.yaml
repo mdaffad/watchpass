@@ -1,0 +1,90 @@
+#cloud-config
+# Multipass cloud-init for a Watchpass development VM.
+#
+# Provisions Ubuntu 24.04 (Noble) with ROS 2 Jazzy desktop, Gazebo (gz-sim),
+# ffmpeg, colcon, TurtleBot simulation packages, and a mediamtx WebRTC server.
+#
+# Launch (do NOT need to spin it up to develop; this file is the setup contract):
+#   multipass launch 24.04 --name watchpass \
+#     --cpus 4 --memory 8G --disk 40G \
+#     --cloud-init cloud-init/jazzy.yaml
+#
+# Then mount your checkout and build:
+#   multipass mount . watchpass:/home/ubuntu/watchpass
+#   multipass shell watchpass
+#   cd ~/watchpass && colcon build && source install/setup.bash
+
+package_update: true
+package_upgrade: true
+
+apt:
+  sources:
+    ros2:
+      source: "deb [arch=amd64 signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu noble main"
+
+locale: en_US.UTF-8
+
+packages:
+  - curl
+  - gnupg
+  - lsb-release
+  - build-essential
+  - git
+  - ffmpeg
+  - python3-colcon-common-extensions
+  - python3-rosdep
+  - python3-vcstool
+  # VA-API stack for the AMD/Intel GPU encode path (encoder:=vaapi).
+  - mesa-va-drivers
+  - libva2
+  - vainfo
+
+write_files:
+  # ROS 2 apt signing key (referenced by the apt source above).
+  - path: /tmp/setup-ros-key.sh
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      curl -fsSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
+        -o /usr/share/keyrings/ros-archive-keyring.gpg
+
+  # Convenience environment for every login shell.
+  - path: /etc/profile.d/99-watchpass.sh
+    permissions: "0644"
+    content: |
+      source /opt/ros/jazzy/setup.bash
+      # Default middleware (Jazzy default, stated explicitly for clarity).
+      export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      # Force the shared-memory / zero-copy Fast DDS profile when the workspace
+      # is present.
+      _wp=/home/ubuntu/watchpass/install/watchpass_bringup/share/watchpass_bringup/config/fastdds_shm.xml
+      [ -f "$_wp" ] && export FASTRTPS_DEFAULT_PROFILES_FILE="$_wp"
+      [ -f /home/ubuntu/watchpass/install/setup.bash ] && \
+        source /home/ubuntu/watchpass/install/setup.bash
+
+runcmd:
+  # Install the ROS key first, then refresh the index for the ros2 source.
+  - /tmp/setup-ros-key.sh
+  - apt-get update
+  # ROS 2 Jazzy desktop + Gazebo integration + TurtleBot(4) simulation.
+  - DEBIAN_FRONTEND=noninteractive apt-get install -y
+      ros-jazzy-desktop
+      ros-jazzy-ros-gz
+      ros-jazzy-rmw-fastrtps-cpp
+      ros-jazzy-turtlebot4-simulator
+      ros-jazzy-turtlebot4-desktop
+  # Initialise rosdep for resolving package dependencies.
+  - rosdep init || true
+  - sudo -u ubuntu rosdep update || true
+  # mediamtx: turns the RTSP push from ffmpeg into a WebRTC stream (:8889).
+  - MTX_VER=1.9.3
+  - curl -fsSL
+      "https://github.com/bluenviron/mediamtx/releases/download/v${MTX_VER}/mediamtx_v${MTX_VER}_linux_amd64.tar.gz"
+      -o /tmp/mediamtx.tar.gz
+  - tar -xzf /tmp/mediamtx.tar.gz -C /usr/local/bin mediamtx
+  - install -d /etc/mediamtx
+  # Allow the default user to reach the GPU render node for VA-API encoding.
+  - usermod -aG render,video ubuntu || true
+
+final_message: "Watchpass dev VM ready after $UPTIME s. Run: cd ~/watchpass && colcon build"

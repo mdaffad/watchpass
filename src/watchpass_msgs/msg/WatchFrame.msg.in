@@ -1,0 +1,44 @@
+# WatchFrame is a fixed-size image frame designed for zero-copy transport.
+#
+# Every field is bounded, so the whole message is a "plain" (POD-like) type.
+# That lets the middleware place it in shared memory and hand publishers and
+# subscribers a *loaned* buffer, avoiding serialization and cross-process
+# copies on the same host (see rclcpp::Publisher::borrow_loaned_message).
+#
+# Unbounded fields (strings, variable-length arrays) would break this property
+# and force the middleware back onto the copy+serialize path, so keep this
+# message flat and fixed-size. When a frame is larger than a single loaned
+# buffer can ever be (4K, GPU surfaces), use WatchFrameHandle instead, which
+# references an externally-managed pool/DMABUF rather than inlining the pixels.
+#
+# NOTE: This file is a template. The payload capacity is substituted at build
+# time from the CMake option WATCHPASS_FRAME_CAPACITY, so the size is a single
+# configurable knob rather than a hardcoded literal. Do not edit the generated
+# msg/WatchFrame.msg directly.
+
+# --- Pixel encodings -------------------------------------------------
+uint8 ENCODING_RGB8=0
+uint8 ENCODING_BGR8=1
+uint8 ENCODING_MONO8=2
+
+# --- Capacity --------------------------------------------------------
+# Maximum payload in bytes, set by -DWATCHPASS_FRAME_CAPACITY at build time.
+# Default 1280 x 720 x 3 (RGB8) = 2764800. The constant and the array bound
+# below are filled from the same value so they can never drift apart.
+uint32 MAX_DATA=@WATCHPASS_FRAME_CAPACITY@
+
+# --- Header ----------------------------------------------------------
+# builtin_interfaces/Time is itself fixed-size (int32 sec + uint32 nanosec),
+# so nesting it keeps WatchFrame a plain type.
+builtin_interfaces/Time stamp
+uint32 seq
+
+# --- Geometry --------------------------------------------------------
+uint32 width
+uint32 height
+uint32 step             # bytes per row
+uint8  encoding         # one of the ENCODING_* constants above
+
+# --- Payload ---------------------------------------------------------
+uint32 data_size        # number of valid bytes in data (<= MAX_DATA)
+uint8[@WATCHPASS_FRAME_CAPACITY@] data   # fixed-size payload, capacity == MAX_DATA

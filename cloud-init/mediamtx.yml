@@ -1,0 +1,22 @@
+# Minimal mediamtx config for Watchpass.
+#
+# ffmpeg (driven by ffmpeg_streamer) pushes H.264 over RTSP to
+# rtsp://127.0.0.1:8554/watchpass. mediamtx re-publishes the same stream over
+# WebRTC, so a browser can watch it at:
+#
+#   http://<vm-ip>:8889/watchpass
+#
+# Run it with:  mediamtx /path/to/mediamtx.yml
+
+rtsp: yes
+rtspAddress: :8554
+
+webrtc: yes
+webrtcAddress: :8889
+# Advertise the host address so the browser can reach the ICE candidate.
+# webrtcAdditionalHosts: [192.168.64.10]
+
+paths:
+  watchpass:
+    # Accept whatever is pushed to this path (the ffmpeg RTSP publisher).
+    source: publisher
