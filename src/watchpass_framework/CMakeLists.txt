@@ -12,6 +12,7 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(builtin_interfaces REQUIRED)
 find_package(watchpass_msgs REQUIRED)
 find_package(OpenCV REQUIRED COMPONENTS core imgproc)
 
@@ -26,7 +27,7 @@ target_include_directories(watchpass_framework PUBLIC
   ${OpenCV_INCLUDE_DIRS}
 )
 target_link_libraries(watchpass_framework ${OpenCV_LIBRARIES})
-ament_target_dependencies(watchpass_framework rclcpp watchpass_msgs)
+ament_target_dependencies(watchpass_framework rclcpp builtin_interfaces watchpass_msgs)
 
 install(TARGETS watchpass_framework
   EXPORT export_watchpass_framework
@@ -40,7 +41,7 @@ install(DIRECTORY include/
 
 # Export so downstream packages can just find_package(watchpass_framework).
 ament_export_targets(export_watchpass_framework HAS_LIBRARY_TARGET)
-ament_export_dependencies(rclcpp watchpass_msgs OpenCV)
+ament_export_dependencies(rclcpp builtin_interfaces watchpass_msgs OpenCV)
 ament_export_include_directories(include)
 
 if(BUILD_TESTING)

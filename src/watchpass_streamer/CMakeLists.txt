@@ -22,6 +22,8 @@ add_library(watchpass_streamer_components SHARED
   src/camera_bridge_node.cpp
   src/ffmpeg_streamer_node.cpp
   src/ffmpeg_pipe.cpp
+  src/ros_image_source.cpp
+  src/v4l2_source.cpp
 )
 target_include_directories(watchpass_streamer_components PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

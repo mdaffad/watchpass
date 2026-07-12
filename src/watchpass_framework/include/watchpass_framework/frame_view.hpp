@@ -16,31 +16,13 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <string>
 
 #include "opencv2/core/mat.hpp"
+#include "watchpass_framework/frame_format.hpp"
 #include "watchpass_msgs/msg/watch_frame.hpp"
 
 namespace watchpass
 {
-
-/// Static helpers that translate WatchFrame encodings to the vocabularies used
-/// by OpenCV and ffmpeg. Keep this the single source of truth for encodings so
-/// every node agrees.
-struct FrameFormat
-{
-  /// Bytes per pixel for an encoding, or 0 if unknown.
-  static int channels(uint8_t encoding);
-  /// OpenCV matrix type (e.g. CV_8UC3), or -1 if unknown.
-  static int cv_type(uint8_t encoding);
-  /// ffmpeg raw pixel format string (e.g. "rgb24"), or nullptr if unknown.
-  static const char * ffmpeg_pix_fmt(uint8_t encoding);
-  /// Human-readable name, e.g. "rgb8".
-  static const char * name(uint8_t encoding);
-  /// Map a ROS sensor_msgs/Image encoding string to a WatchFrame encoding.
-  /// Returns false if unsupported.
-  static bool from_ros(const std::string & ros_encoding, uint8_t & out);
-};
 
 /// Non-owning, read-only view over a WatchFrame.
 ///

@@ -29,7 +29,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import ComposableNodeContainer
-from launch_ros.descriptions import ComposableNode
+from launch_ros.descriptions import ComposableNode, ParameterValue
 
 
 def generate_launch_description():
@@ -39,7 +39,7 @@ def generate_launch_description():
     image_topic = LaunchConfiguration('image_topic')
     rtsp_url = LaunchConfiguration('rtsp_url')
     encoder = LaunchConfiguration('encoder')
-    flip_code = LaunchConfiguration('flip_code')
+    flip_code = ParameterValue(LaunchConfiguration('flip_code'), value_type=int)
 
     args = [
         DeclareLaunchArgument(

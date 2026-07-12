@@ -26,30 +26,52 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import ComposableNodeContainer
-from launch_ros.descriptions import ComposableNode
+from launch_ros.descriptions import ComposableNode, ParameterValue
 
 
 def generate_launch_description():
     bringup_share = get_package_share_directory('watchpass_bringup')
     fastdds_profile = os.path.join(bringup_share, 'config', 'fastdds_shm.xml')
 
+    source = LaunchConfiguration('source')
     image_topic = LaunchConfiguration('image_topic')
+    device = LaunchConfiguration('device')
+    # Numeric params arrive as strings from the CLI; coerce so declare_parameter
+    # sees the type the node expects.
+    width = ParameterValue(LaunchConfiguration('width'), value_type=int)
+    height = ParameterValue(LaunchConfiguration('height'), value_type=int)
+    pixel_format = LaunchConfiguration('pixel_format')
     frame_topic = LaunchConfiguration('frame_topic')
-    fps = LaunchConfiguration('fps')
+    fps = ParameterValue(LaunchConfiguration('fps'), value_type=float)
     rtsp_url = LaunchConfiguration('rtsp_url')
     encoder = LaunchConfiguration('encoder')
     vaapi_device = LaunchConfiguration('vaapi_device')
 
     args = [
         DeclareLaunchArgument(
+            'source', default_value='topic',
+            description='Frame source: topic (subscribe) or v4l2 (direct device)'),
+        DeclareLaunchArgument(
             'image_topic', default_value='image_raw',
-            description='sensor_msgs/Image topic coming from the camera or sim'),
+            description='sensor_msgs/Image topic when source:=topic'),
+        DeclareLaunchArgument(
+            'device', default_value='/dev/video0',
+            description='V4L2 device when source:=v4l2'),
+        DeclareLaunchArgument(
+            'width', default_value='640',
+            description='Requested capture width when source:=v4l2'),
+        DeclareLaunchArgument(
+            'height', default_value='480',
+            description='Requested capture height when source:=v4l2'),
+        DeclareLaunchArgument(
+            'pixel_format', default_value='rgb8',
+            description='V4L2 capture format: rgb8, bgr8 or mono8'),
         DeclareLaunchArgument(
             'frame_topic', default_value='watch_frame',
             description='WatchFrame topic used between the bridge and streamer'),
         DeclareLaunchArgument(
             'fps', default_value='30.0',
-            description='Frame rate advertised to ffmpeg'),
+            description='Frame rate (advertised to ffmpeg; requested from V4L2)'),
         DeclareLaunchArgument(
             'rtsp_url', default_value='rtsp://127.0.0.1:8554/watchpass',
             description='Destination the encoded stream is pushed to'),
@@ -76,7 +98,13 @@ def generate_launch_description():
                 plugin='watchpass_streamer::CameraBridgeNode',
                 name='camera_bridge',
                 parameters=[{
+                    'source': source,
                     'input_topic': image_topic,
+                    'device': device,
+                    'width': width,
+                    'height': height,
+                    'pixel_format': pixel_format,
+                    'fps': fps,
                     'output_topic': frame_topic,
                 }],
                 extra_arguments=[{'use_intra_process_comms': True}],

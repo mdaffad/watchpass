@@ -92,12 +92,40 @@ DMABUF import) — no pipe, no upload, no host copy on the entire path from sens
 to encoder. This is where `WatchFrameHandle` pays off and is the natural next
 implementation step.
 
+## Pluggable ingest sources
+
+`camera_bridge` gets frames from a `watchpass::FrameSource`, selected by the
+`source` parameter. Two backends ship:
+
+- `RosImageSource` (`source=topic`) — subscribes to a `sensor_msgs/Image` topic.
+  Right when something else already publishes frames (Gazebo, a driver node).
+- `V4l2Source` (`source=v4l2`) — captures a `/dev/videoN` device directly with
+  V4L2 MMAP streaming I/O. The capture thread dequeues each filled kernel buffer,
+  hands it to the bridge as a `RawFrame` aliasing the mmap slot, and the bridge
+  copies it once into a loaned `WatchFrame`. This removes the driver node and its
+  serialize→publish→deserialize round-trip entirely.
+
+Both feed the *same* publish path in `camera_bridge`, so the zero-copy
+publish is identical regardless of source. Add a backend by implementing the
+`FrameSource` interface (`start(callback)` / `stop()`).
+
+### The V4L2 → GPU zero-copy endgame
+
+`V4l2Source` today uses MMAP buffers (one copy into the loaned `WatchFrame`).
+V4L2 can instead **export DMABUF** fds (`V4L2_MEMORY_DMABUF`). Wiring that to a
+`WatchFrameHandle(KIND_DMABUF)` and importing the fd into a VA-API surface in
+`ffmpeg_streamer` yields a path with **no host copy at all** from sensor to GPU
+encoder — the same DMABUF story as the encode section, now starting at capture.
+
 ## Where each piece lives
 
 | Concern | Mechanism | Status |
 | --- | --- | --- |
 | Small/medium frames, host | plain `WatchFrame` + loaned messages | implemented, verified |
 | Configurable max size | `WATCHPASS_FRAME_CAPACITY` | implemented |
+| Pluggable capture source | `FrameSource`: `RosImageSource`, `V4l2Source` | implemented |
+| Direct device capture | `source:=v4l2` (V4L2 MMAP) | implemented (needs a device) |
 | Reusable processing nodes | `FrameProcessorNode` / `FrameConsumerNode` | implemented |
 | GPU-offloaded encode | `encoder:=vaapi` (`h264_vaapi`) | implemented (needs AMD stack) |
 | 4K / no-inline / GPU surfaces | `WatchFrameHandle` (shm pool / DMABUF) | message + design; runtime TODO |
+| Sensor→GPU no-copy | V4L2 DMABUF-export → VA-API import | design; runtime TODO |

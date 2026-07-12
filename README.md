@@ -6,18 +6,22 @@ image-processing nodes over them without copies, and encode + ship the result to
 a WebRTC/RTSP/RTP server with `ffmpeg` — including AMD/Intel GPU (VA-API) encode.
 
 ```
- camera / Gazebo        camera_bridge        FrameProcessorNode(s)       ffmpeg_streamer        mediamtx
- (sensor_msgs/Image) ─▶ (loan a WatchFrame)─▶ grayscale ─▶ flip ─▶ ... ─▶ (encode) ──RTSP──▶ (WebRTC :8889)
-                        └───────────── zero-copy loaned WatchFrame ──────┘ └─ kernel pipe ─┘
+ topic  ─┐                                                                              mediamtx
+ (Image) ├▶ camera_bridge ─▶ FrameProcessorNode(s) ─────────────▶ ffmpeg_streamer ──RTSP──▶ (WebRTC :8889)
+ v4l2   ─┘  (loan a         grayscale ─▶ flip ─▶ ...              (encode: x264
+ /dev/videoN  WatchFrame)                                          or vaapi/GPU)
+            └──────────────── zero-copy loaned WatchFrame ───────┘ └─ kernel pipe ─┘
 ```
 
-`WatchFrame` is the common currency. `ffmpeg_streamer` is just one *consumer* of
-it; every processing stage is a small subclass of a framework base class and
-gets zero-copy in **and** out for free.
+`WatchFrame` is the common currency. The **source** is pluggable (subscribe to a
+topic, or capture a V4L2 device directly); `ffmpeg_streamer` is just one
+*consumer*; every processing stage is a small subclass of a framework base class
+and gets zero-copy in **and** out for free.
 
-- **Zero-copy ingest into ROS.** A fixed-size `WatchFrame` (generated with
-  `rosidl`) is a *plain* type, so Fast DDS hands publishers and subscribers a
-  **loaned buffer** in shared memory — no serialization, no copies between nodes.
+- **Pluggable zero-copy ingest.** `camera_bridge` fills a fixed-size `WatchFrame`
+  (a *plain* `rosidl` type, so Fast DDS hands out **loaned** shared-memory
+  buffers) from either a ROS topic or a direct **V4L2** device — the latter skips
+  a whole driver node and its serialize/publish/deserialize round-trip.
 - **A processing framework, not one app.** `FrameProcessorNode` (in→out) and
   `FrameConsumerNode` (sink) own all the plumbing; you implement one method.
   `FrameView::as_mat()` gives a **zero-copy `cv::Mat`** for OpenCV work.
@@ -37,7 +41,7 @@ gets zero-copy in **and** out for free.
 | [`watchpass_msgs`](src/watchpass_msgs) | `WatchFrame` (fixed-size, zero-copy) + `WatchFrameHandle` (reference/DMABUF), via `rosidl`. Capacity is a CMake knob. |
 | [`watchpass_framework`](src/watchpass_framework) | The reusable core: `FrameView` (OpenCV zero-copy), `FrameConsumerNode`, `FrameProcessorNode`. |
 | [`watchpass_nodes`](src/watchpass_nodes) | Example processors on the framework: `grayscale`, `flip`. |
-| [`watchpass_streamer`](src/watchpass_streamer) | `camera_bridge` (ingest) + `ffmpeg_streamer` (a `FrameConsumerNode`) + `FfmpegPipe`. |
+| [`watchpass_streamer`](src/watchpass_streamer) | `camera_bridge` (pluggable ingest: topic / V4L2) + `ffmpeg_streamer` (a `FrameConsumerNode`) + `FfmpegPipe`. |
 | [`watchpass_bringup`](src/watchpass_bringup) | Launch files, Fast DDS shared-memory profile, demo Gazebo world. |
 
 ## Why this is zero-copy
@@ -108,6 +112,27 @@ ros2 launch watchpass_bringup sim.launch.py
 ```
 
 Open `http://<vm-ip>:8889/watchpass` in a browser to watch the WebRTC stream.
+
+### Frame sources — topic vs. direct V4L2
+
+`camera_bridge` gets frames from a pluggable source, chosen with `source`:
+
+```bash
+# Default: subscribe to a sensor_msgs/Image topic (Gazebo, a driver node, ...).
+ros2 launch watchpass_bringup stream.launch.py source:=topic image_topic:=/my_camera/image_raw
+
+# Direct: capture straight from a V4L2 device — no driver node, no extra hop.
+ros2 launch watchpass_bringup stream.launch.py \
+  source:=v4l2 device:=/dev/video0 width:=640 height:=480 pixel_format:=rgb8 fps:=30.0
+```
+
+Direct V4L2 capture writes the device's mmap buffer straight into the loaned
+`WatchFrame`, eliminating the driver node's serialize→publish→deserialize
+round-trip. It supports the directly-mappable formats `rgb8` / `bgr8` / `mono8`;
+cameras that only emit YUYV or MJPEG need a conversion step (a
+`FrameProcessorNode` or `libv4l`) — `camera_bridge` logs a clear error if the
+negotiated format isn't mappable. Add your own backend by implementing
+`watchpass::FrameSource` (see `RosImageSource` / `V4l2Source`).
 
 ### Chained processing demo
 
@@ -214,7 +239,9 @@ and `RMW_IMPLEMENTATION=rmw_fastrtps_cpp`.
 
 | Where | Key | Default | Meaning |
 | --- | --- | --- | --- |
-| `camera_bridge` | `input_topic` / `output_topic` | `image_raw` / `watch_frame` | Source image → published `WatchFrame`. |
+| `camera_bridge` | `source` | `topic` | Frame source: `topic` (subscribe) or `v4l2` (direct device). |
+| `camera_bridge` | `input_topic` / `output_topic` | `image_raw` / `watch_frame` | Topic-source input → published `WatchFrame`. |
+| `camera_bridge` | `device` / `width` / `height` / `pixel_format` | `/dev/video0` / `640` / `480` / `rgb8` | V4L2-source capture settings. |
 | `FrameProcessorNode` | `input_topic` / `output_topic` | `watch_frame` / `watch_frame_out` | In/out topics for any processor (grayscale, flip, …). |
 | `flip` | `flip_code` | `1` | `0`=vertical, `1`=horizontal, `-1`=both. |
 | `ffmpeg_streamer` | `input_topic` | `watch_frame` | Source `WatchFrame`. |

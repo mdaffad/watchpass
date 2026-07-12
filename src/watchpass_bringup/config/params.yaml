@@ -3,8 +3,16 @@
 
 /**/camera_bridge:
   ros__parameters:
-    input_topic: image_raw       # sensor_msgs/Image from the camera / sim
+    source: topic                # topic (subscribe) | v4l2 (direct device)
     output_topic: watch_frame    # WatchFrame published zero-copy
+    # -- source=topic --
+    input_topic: image_raw       # sensor_msgs/Image from the camera / sim
+    # -- source=v4l2 (direct /dev/videoN capture) --
+    device: /dev/video0
+    width: 640
+    height: 480
+    pixel_format: rgb8           # rgb8 | bgr8 | mono8 (directly-mappable formats)
+    fps: 30.0
 
 /**/grayscale:
   ros__parameters:
